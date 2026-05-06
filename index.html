@@ -3,189 +3,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Field Pro Custom - Search & Focus</title>
+    <title>Field Pro Custom - Ultimate UX</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0f172a; }
         #map { position: fixed; top: 0; bottom: 0; width: 100%; z-index: 1; }
-        .custom-tooltip { background: rgba(0,0,0,0.9); color: white; border: none; border-radius: 8px; padding: 6px 12px; font-size: 14px; }
-        .icon-choice.selected { border: 3px solid #3b82f6; background: #1e293b; transform: scale(1.1); }
+        .custom-tooltip { background: rgba(0,0,0,0.9); color: white; border: none; border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: bold; }
         .img-pin { border: 2px solid white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); object-fit: cover; }
-        .emoji-pin { font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4)); text-align: center; }
+        .emoji-pin { font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4)); text-align: center; position: relative; }
+        
+        /* お気に入りバッジ */
+        .fav-badge::after { content: '★'; position: absolute; top: -5px; right: -5px; font-size: 12px; color: #fbbf24; background: #0f172a; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border: 1px solid #fbbf24; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        
+        /* 透明感のあるUI（グラスモーフィズム） */
+        .glass-morphism { background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(14px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        .glass-input { background: rgba(255, 255, 255, 0.12) !important; backdrop-filter: blur(4px); border: 1px solid rgba(255, 255, 255, 0.1) !important; color: white !important; }
+        .glass-input::placeholder { color: rgba(255, 255, 255, 0.4); }
+        
+        #history-dropdown { transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0; transform: translateY(-10px); pointer-events: none; }
+        #history-dropdown.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        
+        /* スクロールバー非表示（モダンブラウザ用） */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body>
 
     <div id="map"></div>
 
-    <!-- UI: 中央配置のコンパクト検索バー -->
-    <div class="fixed top-6 left-0 right-0 z-[1000] flex flex-col items-center pointer-events-none space-y-4">
-        <div class="pointer-events-auto w-64 sm:w-80">
-            <input id="search-input" type="text" placeholder="地点を検索..." 
-                   class="w-full bg-white/80 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-full text-slate-900 shadow-xl outline-none focus:ring-2 focus:ring-blue-500 text-xs text-center"
-                   oninput="searchMemos()">
+    <!-- UI: メイン操作エリア -->
+    <div class="fixed top-6 left-0 right-0 z-[1000] flex flex-col items-center pointer-events-none space-y-4 px-4">
+        <!-- 検索バー（リアルタイム絞り込み機能付き） -->
+        <div class="relative pointer-events-auto w-full max-w-[340px]">
+            <div class="glass-morphism rounded-full shadow-2xl flex items-center px-5 py-3 ring-1 ring-black/5">
+                <input id="search-input" type="text" placeholder="キーワード・絵文字で検索..." 
+                       class="w-full bg-transparent border-none text-slate-900 outline-none text-sm text-center font-medium"
+                       oninput="searchMemos()" onfocus="showHistory()">
+            </div>
+            <!-- 検索結果・履歴ドロップダウン -->
+            <div id="history-dropdown" class="absolute top-14 left-0 right-0 glass-morphism rounded-[2rem] shadow-2xl overflow-hidden mt-1 mx-1 border border-white/40">
+                <div id="history-items" class="max-h-[280px] overflow-y-auto no-scrollbar"></div>
+            </div>
         </div>
         
-        <div class="pointer-events-auto">
+        <!-- アクションボタン -->
+        <div class="pointer-events-auto flex items-center gap-3 w-full max-w-[340px]">
             <button onclick="requestCurrentLocation()" 
-                    class="bg-blue-600/90 backdrop-blur-md text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-lg active:scale-95 transition-all flex items-center gap-1">
+                    class="flex-1 bg-blue-600 text-white py-4 rounded-2xl text-[11px] font-black shadow-xl shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center gap-2">
                 📍 現在地を記録
+            </button>
+            <button onclick="toggleHistory()" 
+                    class="flex-1 bg-slate-800 text-white py-4 rounded-2xl text-[11px] font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
+                🕒 履歴検索
             </button>
         </div>
     </div>
 
-    <!-- 編集モーダル -->
-    <div id="editor-modal" class="fixed inset-0 z-[2000] bg-black/80 hidden flex items-center justify-center p-6 backdrop-blur-sm">
-        <div class="bg-slate-900 w-full max-w-sm p-6 rounded-3xl border border-white/10 space-y-4 text-white shadow-2xl">
+    <!-- 編集・詳細入力モーダル -->
+    <div id="editor-modal" class="fixed inset-0 z-[2000] bg-slate-950/85 hidden flex items-center justify-center p-6 backdrop-blur-sm transition-opacity">
+        <div class="bg-slate-900 w-full max-w-sm p-6 rounded-[2.5rem] border border-white/10 space-y-5 shadow-2xl">
             <div class="flex justify-between items-center">
-                <h2 class="font-bold text-sm">地点の編集</h2>
-                <button onclick="deletePoint()" id="delete-btn" class="text-red-500 text-[10px] font-bold px-2 py-1 bg-red-500/10 rounded-md hidden">🗑 削除</button>
+                <h2 class="text-white font-bold text-sm ml-1">地点の編集</h2>
+                <label class="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full border border-white/5 cursor-pointer active:scale-95 transition-transform">
+                    <input type="checkbox" id="fav-check" class="w-4 h-4 accent-yellow-400">
+                    <span class="text-[10px] font-bold text-yellow-400">★ お気に入り</span>
+                </label>
             </div>
 
-            <div class="space-y-2">
-                <div class="flex justify-between items-center text-[9px] uppercase font-bold text-slate-500 tracking-widest">
-                    <span>アイコンを選択</span>
-                    <button onclick="addNewIcon()" class="text-blue-400">+ 追加</button>
-                </div>
-                <div class="flex flex-wrap gap-2 bg-slate-800/50 p-3 rounded-2xl max-h-24 overflow-y-auto border border-white/5" id="icon-selector"></div>
-            </div>
+            <!-- アイコン選択 -->
+            <div id="icon-selector" class="flex flex-wrap gap-2.5 bg-slate-800/50 p-3 rounded-2xl max-h-24 overflow-y-auto border border-white/5 no-scrollbar"></div>
 
+            <!-- メモ入力（背景：透明な白） -->
             <input id="memo-input" type="text" placeholder="メモを入力..." 
-                   class="w-full bg-slate-800/80 border-none p-3 rounded-xl text-white text-sm outline-none">
+                   class="w-full glass-input p-4 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-white/20 transition-all font-medium">
             
             <div class="space-y-2">
-                <p class="text-slate-500 text-[9px] uppercase font-bold tracking-widest">写真・動画</p>
                 <input id="file-input" type="file" accept="image/*,video/*" class="hidden">
-                <button onclick="document.getElementById('file-input').click()" class="w-full bg-slate-700/50 py-2 rounded-xl text-xs font-medium">📷 メディアを選択</button>
-                <div id="media-preview" class="w-full h-24 rounded-xl bg-black/50 hidden items-center justify-center overflow-hidden border border-white/5 relative"></div>
+                <button onclick="document.getElementById('file-input').click()" class="w-full bg-slate-700/40 py-3 rounded-2xl text-[11px] font-bold text-white border border-white/5 hover:bg-slate-700/60 transition-colors">📷 写真・動画を選択</button>
+                <div id="media-preview" class="w-full h-24 rounded-2xl bg-black/50 hidden items-center justify-center overflow-hidden border border-white/5 relative"></div>
             </div>
 
-            <div class="flex gap-2 pt-1">
-                <button onclick="closeModal()" class="flex-1 text-slate-400 py-3 text-xs font-bold">戻る</button>
-                <button onclick="savePoint()" class="flex-1 bg-blue-600 py-3 rounded-xl text-xs font-bold shadow-lg">保存</button>
+            <div class="flex gap-3 pt-2">
+                <button onclick="closeModal()" class="flex-1 text-slate-400 py-4 text-xs font-black text-center">戻る</button>
+                <button onclick="savePoint()" class="flex-1 bg-blue-600 text-white py-4 rounded-2xl text-xs font-black shadow-lg shadow-blue-600/30">保存する</button>
             </div>
+            <button onclick="deletePoint()" id="delete-btn" class="w-full text-red-500 text-[10px] font-bold opacity-60 hidden pt-2">🗑 この記録を削除する</button>
         </div>
     </div>
 
     <script>
-        let customIcons = JSON.parse(localStorage.getItem('my_icons') || '["📍", "🚧", "🚛", "🅿️", "⚠️", "🏠"]');
+        let customIcons = JSON.parse(localStorage.getItem('my_icons') || '["📍", "🚧", "🚛", "🅿️", "⚠️", "🏠", "🏢", "🌳"]');
         const map = L.map('map', { zoomControl: false }).setView([35.6812, 139.7671], 15);
         L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(map);
 
         let tempLatLng = null, editingId = null, selectedFileUrl = null, selectedFileType = null, currentIcon = customIcons[0], markers = [];
         let fieldData = JSON.parse(localStorage.getItem('field_archive_v5') || '[]');
 
-        renderIconSelector();
-        refreshMap();
+        renderIconSelector(); refreshMap();
+        map.on('zoomend', updateMarkerVisibility);
 
-        function renderIconSelector() {
-            const s = document.getElementById('icon-selector');
-            s.innerHTML = customIcons.map(i => `<button onclick="selectIcon('${i}')" class="icon-choice p-2 text-xl rounded-lg" data-icon="${i}">${i}</button>`).join('');
+        // --- 履歴・検索ロジック (Smart Search) ---
+        function toggleHistory() {
+            const drop = document.getElementById('history-dropdown');
+            drop.classList.contains('show') ? hideHistory() : showHistory();
         }
 
-        function addNewIcon() {
-            const n = prompt("追加したい絵文字を入力：");
-            if (n && !customIcons.includes(n)) {
-                customIcons.push(n);
-                localStorage.setItem('my_icons', JSON.stringify(customIcons));
-                renderIconSelector();
-                selectIcon(n);
+        function showHistory() {
+            renderList(fieldData.slice().reverse().slice(0, 5), "最近の履歴");
+            document.getElementById('history-dropdown').classList.add('show');
+        }
+
+        function hideHistory() { document.getElementById('history-dropdown').classList.remove('show'); }
+
+        function searchMemos() {
+            const q = document.getElementById('search-input').value.toLowerCase();
+            if(!q) { showHistory(); return; }
+            const filtered = fieldData.filter(d => d.text.toLowerCase().includes(q) || d.icon.includes(q)).reverse();
+            renderList(filtered, "検索結果");
+            document.getElementById('history-dropdown').classList.add('show');
+        }
+
+        function renderList(items, label) {
+            const container = document.getElementById('history-items');
+            if (items.length === 0) {
+                container.innerHTML = `<div class="p-8 text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">No results</div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="px-5 pt-4 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-tighter">${label}</div>
+                ${items.map(d => `
+                    <div onclick="jumpTo(${d.id})" class="px-5 py-4 border-b border-slate-100/50 last:border-none flex items-center gap-4 active:bg-blue-50 transition-colors cursor-pointer">
+                        <span class="text-xl w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-100">${d.icon}</span>
+                        <div class="flex flex-col min-w-0 flex-1">
+                            <span class="text-[13px] font-bold text-slate-800 truncate">${d.text}</span>
+                            <span class="text-[9px] text-slate-400 font-bold tracking-wider">${d.isFav ? '★ FAVORITE' : 'STATION'}</span>
+                        </div>
+                    </div>`).join('')}`;
+        }
+
+        function jumpTo(id) {
+            const target = markers.find(m => m.data.id === id);
+            if (target) { 
+                hideHistory();
+                map.flyTo(target.marker.getLatLng(), 18, { duration: 1.2 }); 
+                // 自然なフロー：いきなり詳細を開かず、まずは場所を吹き出しで示す
+                setTimeout(() => { target.marker.openTooltip(); }, 1300);
             }
         }
 
-        function selectIcon(i) {
-            currentIcon = i;
-            document.querySelectorAll('.icon-choice').forEach(el => el.classList.toggle('selected', el.dataset.icon === i));
+        // --- マーカー・マップ制御 ---
+        function updateMarkerVisibility() {
+            const zoom = map.getZoom();
+            markers.forEach(m => (zoom <= 14 && !m.data.isFav) ? map.removeLayer(m.marker) : map.addLayer(m.marker));
         }
 
+        function addMarker(d) {
+            let html = d.media && d.type === 'image' ? 
+                `<div class="${d.isFav ? 'fav-badge' : ''}"><img src="${d.media}" class="img-pin w-10 h-10"></div>` : 
+                `<div class="emoji-pin ${d.isFav ? 'fav-badge' : ''}">${d.icon}</div>`;
+            
+            const m = L.marker([d.lat, d.lng], { 
+                icon: L.divIcon({ html: html, className: 'dummy', iconSize: [40,40], iconAnchor: [20,20] }) 
+            });
+            m.bindTooltip(d.text, { direction: 'top', className: 'custom-tooltip', offset: [0, -10] });
+            m.on('click', (e) => { L.DomEvent.stopPropagation(e); tempLatLng = m.getLatLng(); openModal(d.id); });
+            markers.push({ data: d, marker: m }); 
+            updateMarkerVisibility();
+        }
+
+        function refreshMap() { markers.forEach(m => map.removeLayer(m.marker)); markers = []; fieldData.forEach(addMarker); }
+
+        // --- モーダル・データ操作 ---
         function openModal(id) {
             editingId = id;
             if (id !== null) {
                 const d = fieldData.find(x => x.id === id);
                 document.getElementById('memo-input').value = d.text;
-                selectIcon(d.icon);
-                selectedFileUrl = d.media;
-                selectedFileType = d.type;
+                document.getElementById('fav-check').checked = d.isFav || false;
+                currentIcon = d.icon;
+                selectedFileUrl = d.media; selectedFileType = d.type;
                 document.getElementById('delete-btn').classList.remove('hidden');
                 updatePreview();
             } else {
                 document.getElementById('memo-input').value = "";
-                selectIcon(customIcons[0]);
-                selectedFileUrl = null;
+                document.getElementById('fav-check').checked = false;
                 document.getElementById('delete-btn').classList.add('hidden');
                 document.getElementById('media-preview').classList.add('hidden');
             }
             document.getElementById('editor-modal').classList.remove('hidden');
         }
 
-        function addMarker(d) {
-            let iconHtml = "", iconSize = [32, 32], iconAnchor = [16, 32];
-            if (d.media && d.type === 'image') {
-                iconHtml = `<img src="${d.media}" class="img-pin w-full h-full">`;
-                iconSize = [40, 40]; iconAnchor = [20, 20];
-            } else {
-                iconHtml = `<div class="emoji-pin">${d.icon || '📍'}</div>`;
-            }
-            const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ html: iconHtml, className: 'dummy', iconSize, iconAnchor }) }).addTo(map);
-            m.bindTooltip(d.text, { direction: 'top', className: 'custom-tooltip' });
-            m.on('click', (e) => { 
-                L.DomEvent.stopPropagation(e); 
-                tempLatLng = m.getLatLng(); 
-                openModal(d.id); 
-            });
-            markers.push({ data: d, marker: m });
-        }
-
-        // 検索関数：入力に合わせて地図移動 ＋ ツールチップ ＋ モーダルオープン
-        function searchMemos() {
-            const q = document.getElementById('search-input').value.toLowerCase();
-            if (q.length > 0) {
-                markers.forEach(m => {
-                    if (m.data.text.toLowerCase().includes(q)) {
-                        map.panTo(m.marker.getLatLng());
-                        m.marker.openTooltip();
-                        openModal(m.data.id); // 詳細画面を自動で開く
-                    }
-                });
-            }
-        }
-
         function savePoint() {
-            const t = document.getElementById('memo-input').value || "無題";
-            const p = { id: editingId || Date.now(), lat: tempLatLng.lat, lng: tempLatLng.lng, text: t, icon: currentIcon, media: selectedFileUrl, type: selectedFileType };
-            if (editingId !== null) { fieldData[fieldData.findIndex(x => x.id === editingId)] = p; } else { fieldData.push(p); }
+            const p = { 
+                id: editingId || Date.now(), 
+                lat: tempLatLng.lat, 
+                lng: tempLatLng.lng, 
+                text: document.getElementById('memo-input').value || "無題", 
+                icon: currentIcon, 
+                media: selectedFileUrl, 
+                type: selectedFileType, 
+                isFav: document.getElementById('fav-check').checked 
+            };
+            editingId !== null ? fieldData[fieldData.findIndex(x => x.id === editingId)] = p : fieldData.push(p);
             localStorage.setItem('field_archive_v5', JSON.stringify(fieldData));
             refreshMap(); closeModal();
         }
 
-        function clearMedia() { selectedFileUrl = null; selectedFileType = null; document.getElementById('media-preview').classList.add('hidden'); }
-        function refreshMap() { markers.forEach(m => map.removeLayer(m.marker)); markers = []; fieldData.forEach(addMarker); }
-        function deletePoint() { if(confirm("削除？")){ fieldData=fieldData.filter(x=>x.id!==editingId); localStorage.setItem('field_archive_v5', JSON.stringify(fieldData)); refreshMap(); closeModal(); }}
-        
+        function renderIconSelector() { 
+            document.getElementById('icon-selector').innerHTML = customIcons.map(i => `
+                <button onclick="currentIcon='${i}'" class="p-2.5 text-xl hover:bg-slate-700 rounded-2xl active:scale-90 transition-all">${i}</button>`).join(''); 
+        }
+        function closeModal() { document.getElementById('editor-modal').classList.add('hidden'); }
+        function deletePoint() { if(confirm("この記録を削除してもよろしいですか？")){ fieldData=fieldData.filter(x=>x.id!==editingId); localStorage.setItem('field_archive_v5', JSON.stringify(fieldData)); refreshMap(); closeModal(); }}
+        function requestCurrentLocation() { navigator.geolocation.getCurrentPosition(pos => { tempLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude }; map.flyTo(tempLatLng, 18); openModal(null); }); }
+        map.on('click', (e) => { tempLatLng = e.latlng; openModal(null); });
         function updatePreview() { 
             const p = document.getElementById('media-preview'); 
             if(selectedFileUrl){ 
-                p.innerHTML = selectedFileType === 'video' ? `<video src="${selectedFileUrl}" class="h-full w-full object-cover"></video>` : `<img src="${selectedFileUrl}" class="h-full w-full object-cover">`; 
-                p.innerHTML += `<button onclick="clearMedia()" class="absolute top-1 right-1 bg-black/50 rounded-full p-1 text-[10px]">✕</button>`;
-                p.classList.replace('hidden', 'flex'); 
+                p.innerHTML = selectedFileType==='video'?`<video src="${selectedFileUrl}" class="h-full w-full object-cover"></video>`:`<img src="${selectedFileUrl}" class="h-full w-full object-cover">`; 
+                p.classList.replace('hidden','flex'); 
             } else { p.classList.add('hidden'); }
         }
-
         document.getElementById('file-input').onchange = (e) => { 
-            const f = e.target.files[0]; 
-            if(f){ 
+            const f = e.target.files[0]; if(f){ 
                 selectedFileType = f.type.startsWith('video')?'video':'image'; 
-                const r = new FileReader(); 
-                r.onload=(ev)=>{selectedFileUrl=ev.target.result; updatePreview();}; 
-                r.readAsDataURL(f); 
+                const r=new FileReader(); r.onload=(ev)=>{selectedFileUrl=ev.target.result; updatePreview();}; r.readAsDataURL(f); 
             }
         };
-
-        function closeModal() { document.getElementById('editor-modal').classList.add('hidden'); }
-        function requestCurrentLocation() { navigator.geolocation.getCurrentPosition(pos => { tempLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude }; map.setView(tempLatLng, 18); openModal(null); }); }
-        map.on('click', (e) => { tempLatLng = e.latlng; openModal(null); });
     </script>
 </body>
 </html>

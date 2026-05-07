@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Field Pro Custom - Smart Toggle</title>
+    <title>Field Pro Custom - Icon Plus</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -44,7 +44,6 @@
         </div>
     </div>
 
-    <!-- モーダル -->
     <div id="editor-modal" class="fixed inset-0 z-[2000] bg-slate-950/85 hidden flex items-center justify-center p-6 backdrop-blur-sm">
         <div class="bg-slate-900 w-full max-w-sm p-6 rounded-[2.5rem] border border-white/10 space-y-5">
             <div class="flex justify-between items-center text-white font-bold text-sm">
@@ -55,12 +54,15 @@
                 </label>
             </div>
             <div id="icon-selector" class="flex flex-wrap gap-2.5 bg-slate-800/50 p-3 rounded-2xl max-h-24 overflow-y-auto no-scrollbar border border-white/5"></div>
+            
             <input id="memo-input" type="text" placeholder="メモを入力..." class="w-full glass-input p-4 rounded-2xl text-sm outline-none">
+            
             <div class="space-y-2">
                 <input id="file-input" type="file" accept="image/*,video/*" class="hidden">
                 <button onclick="document.getElementById('file-input').click()" class="w-full bg-slate-700/40 py-3 rounded-2xl text-[11px] font-bold text-white">📷 写真・動画を選択</button>
                 <div id="media-preview" class="w-full h-24 rounded-2xl bg-black/50 hidden items-center justify-center overflow-hidden border border-white/5"></div>
             </div>
+            
             <div class="flex gap-3">
                 <button onclick="closeModal()" class="flex-1 text-slate-400 py-4 text-xs font-black">戻る</button>
                 <button onclick="savePoint()" class="flex-1 bg-blue-600 text-white py-4 rounded-2xl text-xs font-black">保存する</button>
@@ -70,6 +72,7 @@
     </div>
 
     <script>
+        // アイコンの初期値設定
         let customIcons = JSON.parse(localStorage.getItem('my_icons') || '["📍", "🚧", "🚛", "🅿️", "⚠️", "🏠", "🏢"]');
         const map = L.map('map', { zoomControl: false }).setView([35.6812, 139.7671], 15);
         L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(map);
@@ -80,19 +83,44 @@
         renderIconSelector(); refreshMap();
         map.on('zoomend', updateMarkerVisibility);
 
-        // --- 地図クリック時の処理 (履歴を閉じる or 新規ピン) ---
+        // --- 地図クリック時の処理 ---
         map.on('click', (e) => {
             const drop = document.getElementById('history-dropdown');
             if (drop.classList.contains('show')) {
-                // 履歴が開いている時は、閉じるだけで「新規メモ」は出さない
                 hideHistory();
-                document.getElementById('search-input').blur(); // 入力解除
+                document.getElementById('search-input').blur();
             } else {
-                // 履歴が閉まっている時だけ、通常通り新規メモを作成
                 tempLatLng = e.latlng;
                 openModal(null);
             }
         });
+
+        // --- アイコン選択のレンダリングと追加機能 ---
+        function renderIconSelector() {
+            const container = document.getElementById('icon-selector');
+            container.innerHTML = customIcons.map(i => `
+                <button onclick="selectIcon('${i}')" class="p-2.5 text-xl hover:bg-slate-700 rounded-2xl active:scale-90 transition-all ${currentIcon === i ? 'bg-slate-700 ring-2 ring-blue-500' : ''}">${i}</button>
+            `).join('') + `
+                <button onclick="addNewIcon()" class="p-2.5 text-xl bg-slate-700/50 hover:bg-slate-700 rounded-2xl active:scale-90 transition-all text-white/50">＋</button>
+            `;
+        }
+
+        function selectIcon(icon) {
+            currentIcon = icon;
+            renderIconSelector();
+        }
+
+        function addNewIcon() {
+            const newIcon = prompt("追加したい絵文字や文字を入力してください：");
+            if (newIcon && newIcon.trim() !== "") {
+                if (!customIcons.includes(newIcon)) {
+                    customIcons.push(newIcon);
+                    localStorage.setItem('my_icons', JSON.stringify(customIcons));
+                    currentIcon = newIcon;
+                    renderIconSelector();
+                }
+            }
+        }
 
         function toggleHistory() {
             const drop = document.getElementById('history-dropdown');
@@ -172,6 +200,7 @@
                 document.getElementById('media-preview').classList.add('hidden');
                 selectedFileUrl = null;
             }
+            renderIconSelector(); // モーダルを開くたびにアイコン選択を更新
             document.getElementById('editor-modal').classList.remove('hidden');
         }
 
@@ -182,7 +211,6 @@
             refreshMap(); closeModal();
         }
 
-        function renderIconSelector() { document.getElementById('icon-selector').innerHTML = customIcons.map(i => `<button onclick="currentIcon='${i}'" class="p-2.5 text-xl hover:bg-slate-700 rounded-2xl active:scale-90 transition-all">${i}</button>`).join(''); }
         function closeModal() { document.getElementById('editor-modal').classList.add('hidden'); }
         function deletePoint() { if(confirm("削除しますか？")){ fieldData=fieldData.filter(x=>x.id!==editingId); localStorage.setItem('field_archive_v5', JSON.stringify(fieldData)); refreshMap(); closeModal(); }}
         function requestCurrentLocation() { navigator.geolocation.getCurrentPosition(pos => { tempLatLng = { lat: pos.coords.latitude, lng: pos.coords.longitude }; map.flyTo(tempLatLng, 18); openModal(null); }); }
